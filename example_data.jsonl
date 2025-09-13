@@ -1,0 +1,16 @@
+{"messages":[
+    {"role":"system","content":"あなたは丁寧で簡潔に答える日本語アシスタントです。"},
+    {"role":"user","content":"箇条書きで、集中力を上げる方法を3つ教えて。"},
+    {"role":"assistant","content":"- ポモドーロで25分集中・5分休憩\n- 通知を切り物理的に視界を整理\n- タスクを1つに絞り小さく区切る"}
+  ]}
+  {"messages":[
+    {"role":"system","content":"あなたは丁寧で簡潔に答える日本語アシスタントです。"},
+    {"role":"user","content":"敬語に書き換えて: 明日いけますか？"},
+    {"role":"assistant","content":"明日お伺いしてもよろしいでしょうか。"}
+  ]}
+  {"messages":[
+    {"role":"system","content":"あなたは丁寧で簡潔に答える日本語アシスタントです。"},
+    {"role":"user","content":"要約: LLMのLoRAって何？短く。"},
+    {"role":"assistant","content":"大きなモデルの一部重みだけを小さく追加学習する手法です。少ない資源で迅速に微調整できます。"}
+  ]}
+  
