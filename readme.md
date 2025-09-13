@@ -97,7 +97,7 @@ python build_jsonl.py \
   --fill-assistant ""
 ```
 
-2. **敬語変換タスク**（`polite`）
+2. **変換タスク**（`polite`）
 ```bash
 python build_jsonl.py \
   --input casual.txt \
@@ -141,7 +141,9 @@ accelerate launch --config_file accelerate_config.yaml train_lora.py \
 
 学習済みのLoRAアダプターを使用して推論を行います。
 
-```python
+#### 3-1. LoRAアダプターでの推論
+
+```bash
 # inference_lora.pyを実行
 python inference_lora.py
 ```
@@ -189,6 +191,77 @@ with torch.no_grad():
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print(response)
 ```
+
+#### 3-2. マージされたモデルでの推論
+
+LoRAアダプターをベースモデルに統合して、単体のモデルとして使用することもできます。
+
+##### マージの実行
+
+```bash
+# LoRAアダプターをベースモデルに統合
+python merge_and_save.py
+```
+
+このスクリプトは以下の処理を行います：
+- ベースモデルとLoRAアダプターを読み込み
+- LoRAの重みをベースモデルに統合
+- 統合されたモデルを`merged_qwen/`ディレクトリに保存
+
+##### マージされたモデルでの推論
+
+```bash
+# マージされたモデルで推論実行
+python inference_merged.py
+```
+
+または、Pythonスクリプト内で直接使用：
+
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# マージされたモデルを読み込み
+MODEL_DIR = "./merged_qwen"
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, use_fast=True)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_DIR, 
+    device_map="auto", 
+    torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16
+)
+
+# 推論実行
+messages = [
+    {"role": "system", "content": "あなたは丁寧で簡潔に答える日本語アシスタントです。"},
+    {"role": "user", "content": "敬語に書き換えて: 明日いけますか？"}
+]
+
+text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+inputs = tokenizer(text, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    outputs = model.generate(
+        **inputs, 
+        max_new_tokens=128, 
+        do_sample=True, 
+        top_p=0.9, 
+        temperature=0.7
+    )
+
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+print(response)
+```
+
+#### LoRAアダプター vs マージされたモデル
+
+| 方法 | メリット | デメリット | 用途 |
+|------|----------|------------|------|
+| **LoRAアダプター** | ・ファイルサイズが小さい<br>・複数のタスクに対応可能<br>・メモリ効率が良い | ・ベースモデルが必要<br>・読み込み時間が長い | ・開発・実験段階<br>・複数タスクの切り替え |
+| **マージされたモデル** | ・単体で動作<br>・読み込みが高速<br>・デプロイが簡単 | ・ファイルサイズが大きい<br>・特定タスクに固定 | ・本番環境<br>・単一タスクの運用 |
 
 ## モデルの追加方法
 
@@ -276,6 +349,175 @@ tail -f outputs_lora/training_log.txt
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。
+
+## 別プロジェクトでの使用
+
+学習済みのLoRAアダプター（`outputs_lora`ディレクトリ）を他のプロジェクトで使用する方法を説明します。
+
+### 必要なファイル
+
+`outputs_lora`ディレクトリには以下のファイルが含まれています：
+
+```
+outputs_lora/
+├── adapter_config.json      # LoRAの設定情報
+├── adapter_model.safetensors # LoRAの重み
+├── tokenizer.json           # トークナイザー設定
+├── special_tokens_map.json  # 特殊トークン設定
+├── chat_template.jinja      # チャットテンプレート
+└── vocab.json              # 語彙ファイル
+```
+
+### 別プロジェクトでの使用方法
+
+#### 1. ファイルのコピー
+
+```bash
+# 学習済みのLoRAアダプターを新しいプロジェクトにコピー
+cp -r /path/to/LocalLLMLoRA/outputs_lora /path/to/new_project/
+```
+
+#### 2. 新しいプロジェクトでの実装
+
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+
+# ベースモデルの設定（元の学習で使用したモデルと同じものを使用）
+BASE_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"  # またはローカルパス
+ADAPTER_DIR = "./outputs_lora"  # コピーしたLoRAアダプターのパス
+
+# トークナイザーとベースモデルの読み込み
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, use_fast=True)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+base_model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL_ID,
+    device_map="auto",
+    torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16
+)
+
+# LoRAアダプターの適用
+model = PeftModel.from_pretrained(base_model, ADAPTER_DIR)
+
+# 推論関数
+def generate_response(messages, max_new_tokens=128):
+    text = tokenizer.apply_chat_template(
+        messages, 
+        tokenize=False, 
+        add_generation_prompt=True
+    )
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            top_p=0.9,
+            temperature=0.7
+        )
+    
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# 使用例
+messages = [
+    {"role": "system", "content": "あなたは丁寧で簡潔に答える日本語アシスタントです。"},
+    {"role": "user", "content": "敬語に書き換えて: 明日いけますか？"}
+]
+
+response = generate_response(messages)
+print(response)
+```
+
+#### 3. 依存関係のインストール
+
+新しいプロジェクトで必要なライブラリをインストール：
+
+```bash
+pip install torch transformers peft accelerate
+```
+
+### 注意事項
+
+#### ベースモデルの互換性
+
+- **同じベースモデルを使用**: 学習時に使用したベースモデルと同じものを使用してください
+- **バージョンの一致**: transformersライブラリのバージョンが大きく異なる場合は互換性の問題が発生する可能性があります
+
+#### 設定の確認
+
+`adapter_config.json`でベースモデルのパスを確認：
+
+```json
+{
+  "base_model_name_or_path": "/Users/ryusei/project/mr_seino/qwen_local/Qwen2.5-0.5B-Instruct",
+  "target_modules": ["up_proj", "gate_proj", "down_proj"],
+  "r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05
+}
+```
+
+#### パスの調整
+
+新しい環境では、`base_model_name_or_path`のパスを調整する必要がある場合があります：
+
+```python
+# ローカルパスの場合
+BASE_MODEL_ID = "/path/to/your/qwen_local/Qwen2.5-0.5B-Instruct"
+
+# Hugging Face Hubの場合
+BASE_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+```
+
+### 配布用のパッケージ化
+
+#### 1. アダプターのみの配布
+
+```bash
+# 必要なファイルのみをアーカイブ
+tar -czf lora_adapter.tar.gz \
+  outputs_lora/adapter_config.json \
+  outputs_lora/adapter_model.safetensors \
+  outputs_lora/tokenizer.json \
+  outputs_lora/special_tokens_map.json \
+  outputs_lora/chat_template.jinja \
+  outputs_lora/vocab.json
+```
+
+#### 2. 使用方法のドキュメント
+
+配布時に以下の情報を含めることを推奨：
+
+- ベースモデルの情報
+- 学習データの概要
+- 推奨される使用方法
+- システム要件
+
+### トラブルシューティング
+
+#### よくある問題
+
+1. **モデルの読み込みエラー**
+   ```python
+   # 解決策: ベースモデルのパスを確認
+   print("Base model path:", model.config.base_model_name_or_path)
+   ```
+
+2. **トークナイザーの不一致**
+   ```python
+   # 解決策: ベースモデルのトークナイザーを使用
+   tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+   ```
+
+3. **デバイスの不一致**
+   ```python
+   # 解決策: デバイスを明示的に指定
+   model = model.to("cuda" if torch.cuda.is_available() else "cpu")
+   ```
 
 ## 貢献
 
