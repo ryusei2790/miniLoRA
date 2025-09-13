@@ -3,4 +3,5 @@ data/
 outputs_lora/
 merged_qwen/
 .venv/
-venv/
+venv/outputs_lora/checkpoint-80/optimizer.pt
+merged_qwen/model.safetensors
