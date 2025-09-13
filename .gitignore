@@ -1,10 +1,16 @@
+# secrets / venv
 .env
+.venv/
+venv/
+
+# data / artifacts
 data/
 outputs_lora/
 merged_qwen/
-.venv/
-venv/outputs_lora/checkpoint-80/optimizer.pt
-merged_qwen/model.safetensors
 
-
-
+# large model/checkpoints by pattern
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
