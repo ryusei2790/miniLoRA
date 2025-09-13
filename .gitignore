@@ -1,2 +1,6 @@
 .env
 data/
+outputs_lora/
+merged_qwen/
+.venv/
+venv/
