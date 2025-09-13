@@ -66,7 +66,14 @@ python build_jsonl.py \
   --task summarize \
   --chunk-tokens 400
 ```
-
+```bash
+python build_jsonl.py \
+  --input data/long.txt \
+  --output data/train.jsonl \
+  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
+  --task summarize \
+  --chunk-tokens 400
+```
 #### パラメータの説明
 
 - `--input`: 入力テキストファイル（.txt、.mdなど）
