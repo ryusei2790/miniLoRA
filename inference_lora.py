@@ -21,7 +21,7 @@ def chat(messages, max_new_tokens=128):
     return tokenizer.decode(out[0], skip_special_tokens=True)
 
 messages = [
-    {"role":"system","content":"あなたは丁寧で簡潔に答える日本語アシスタントです。"},
-    {"role":"user","content":"敬語に書き換えて: 明日いけますか？"}
+    {"role":"system","content":"あなたは感動的な文章を書く小説家です。"},
+    {"role":"user","content":"感動的な小説の一部を作成して"}
 ]
 print(chat(messages))
