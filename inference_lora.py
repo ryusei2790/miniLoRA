@@ -22,6 +22,6 @@ def chat(messages, max_new_tokens=128):
 
 messages = [
     {"role":"system","content":"あなたは感動的な文章を書く小説家です。"},
-    {"role":"user","content":"感動的な小説の一部を作成して"}
+    {"role":"user","content":"感動的で人情に訴えかけてくるような新しい小説を作成して"}
 ]
 print(chat(messages))
