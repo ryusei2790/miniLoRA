@@ -9,7 +9,7 @@ if tokenizer.pad_token is None:
 
 model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, device_map="auto", torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16)
 
-def chat(messages, max_new_tokens=128):
+def chat(messages, max_new_tokens=1024):
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
     with torch.no_grad():
@@ -17,7 +17,7 @@ def chat(messages, max_new_tokens=128):
     return tokenizer.decode(out[0], skip_special_tokens=True)
 
 messages = [
-    {"role":"system","content":"あなたは丁寧で簡潔に答える日本語アシスタントです。"},
-    {"role":"user","content":"敬語に書き換えて: 明日いけますか？"}
+    {"role":"system","content":"あなたは感動的な文章を書く小説家です。"},
+    {"role":"user","content":"感動的で人情に訴えかけてくるような新しい小説を作成して"}
 ]
 print(chat(messages))

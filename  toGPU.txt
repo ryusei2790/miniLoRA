@@ -1,0 +1,97 @@
+
+
+### 結論（最短）
+- そのままクラウドGPUで動かせます。特別なカスタムCUDAは不要（PyTorch 2.8.0 の cu124 ホイールにCUDAランタイムが同梱）。
+- 必要なのは「十分なGPU VRAM」「NVIDIAドライバ（R550+）」「Python 3.10–3.13」「pipで依存関係を入れる」くらいです。
+- LoRA学習は `accelerate` セットアップを1回実行、推論はそのまま走ります。
+
+### 推奨スペック目安
+- 学習（LoRA, Qwen/7B級）: GPU 24GB VRAM以上（A5000/RTX 6000/A10/A100など）、CPU 4c+、RAM 32GB、Disk 50GB+
+- 推論だけ: 
+  - FP16: 16–24GB VRAM
+  - 4bit量子化: 8–12GB VRAM（`bitsandbytes`を使う場合のみ。今はオプション）
+
+### ドライバ・CUDA
+- `torch==2.8.0` は CUDA 12.4 同梱ビルド（cu124）があります。OSにCUDA Toolkitのインストールは不要。
+- 必要なのは対応ドライバのみ（R550+推奨）。多くのGPUインスタンスは最初から入っています。
+
+### セットアップ手順（Ubuntu NV系インスタンス想定）
+```bash
+# 1) ドライバとGPU確認
+nvidia-smi | cat
+
+# 2) Python & venv（Ubuntu）
+sudo apt-get update -y && sudo apt-get install -y python3.10-venv git
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3) pipの高速化
+pip install -U pip setuptools wheel
+
+# 4) 本リポジトリのクローン（省略可、既にあるなら不要）
+git clone https://.../LocalLLMLoRA.git
+cd LocalLLMLoRA
+
+# 5) 依存関係インストール
+# そのまま requirements.txt でOK（torch==2.8.0, transformers==4.56.1 等）
+pip install -r requirements.txt
+
+# 6) （学習をする場合のみ）accelerate 初期化
+accelerate config default
+# もしくは対話なしで:
+accelerate config --config_file ~/.cache/huggingface/accelerate/default_config.yaml --mixed_precision fp16 --num_processes 1 --num_machines 1 --use_cpu false --dynamo_backend no
+```
+
+### よくある追加オプション（任意）
+```bash
+# OOMを避けやすく
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# HFキャッシュの場所を大きめディスクに
+export HF_HOME=/workspace/.cache/huggingface
+mkdir -p "$HF_HOME"
+```
+
+### 推論の実行例
+- LoRAアダプタで推論:
+```bash
+source .venv/bin/activate
+python inference_lora.py \
+  --adapter_dir outputs_lora \
+  --prompt "こんにちは！"
+```
+- マージ済みモデルで推論（`merged_qwen` が同梱されているのでオフラインでも可）:
+```bash
+python inference_merged.py \
+  --model_dir merged_qwen \
+  --prompt "こんにちは！"
+```
+
+### 学習（LoRA）の実行例
+```bash
+python train_lora.py \
+  --train_file data/train.jsonl \
+  --output_dir outputs_lora \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 8 \
+  --learning_rate 2e-4 \
+  --num_train_epochs 1 \
+  --bf16 True
+```
+- VRAMに合わせて `batch_size`/`grad_accumulation`/`bf16` を調整してください。
+- 4bitでさらに節約したい場合は `bitsandbytes` を入れてロード時に4bit指定の実装を追加（このリポの現状ではオプション）。
+
+### ストレージ・ネットワーク
+- 初回はHF Hubからモデルを落とす場合があるため、`~/.huggingface/token` を設定するとレート制限回避・プライベートモデル取得が容易。
+```bash
+huggingface-cli login --token <YOUR_HF_TOKEN> --add-to-git-credential
+```
+- ディスクはモデル・チェックポイント込みで最低50GBを確保（7B以上を扱うなら100GB+推奨）。
+
+### つまづき対処
+- ImportError: CUDA/driver関連 → `nvidia-smi` で動作確認、ドライバR550+へ更新。`pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu124` を明示して再インストール。
+- OOM → `bf16=True`/`gradient_accumulation`増/`per_device_train_batch_size`減。必要なら4bit化。
+- 起動が遅い/回線問題 → `HF_HOME` を大きいディスクに、モデルは事前に `git lfs` で落としておく。
+
+必要なら、使っているクラウド（GCP/AWS/Lambda/Azure/Runpod/Colab等）を教えてくれれば、その環境向けに完全なコマンド一式と最小コスト構成を具体化します。

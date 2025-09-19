@@ -9,7 +9,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 MODEL_ID = "/Users/ryusei/project/mr_seino/qwen_local/Qwen2.5-0.5B-Instruct"
 OUTPUT_DIR = "./outputs_lora"
 DATA_FILE = "data/train.jsonl"
-MAX_LEN = 512
+MAX_LEN = 1024
 
 use_cuda = torch.cuda.is_available()
 use_mps  = (torch.backends.mps.is_available() and not use_cuda)
