@@ -5,11 +5,13 @@
 ## 目次
 
 - [インストール](#インストール)
+- [クラウドGPU環境での実行](#クラウドgpu環境での実行)
 - [プロジェクト構成](#プロジェクト構成)
 - [使用方法](#使用方法)
   - [1. 学習データの準備](#1-学習データの準備)
   - [2. LoRAファインチューニング](#2-loraファインチューニング)
   - [3. 推論](#3-推論)
+- [LoRA vs マージ方式の比較](#lora-vs-マージ方式の比較)
 - [モデルの追加方法](#モデルの追加方法)
 - [設定のカスタマイズ](#設定のカスタマイズ)
 - [トラブルシューティング](#トラブルシューティング)
@@ -37,6 +39,110 @@ pip install accelerate
 pip install datasets
 ```
 
+## クラウドGPU環境での実行
+
+このプロジェクトはクラウドGPU環境（AWS、GCP、Azure、RunPod、Lambda Labs等）で実行できます。
+
+### 推奨スペック
+
+#### 学習（LoRA、Qwen2.5-0.5B級）
+- **GPU**: 24GB VRAM以上（A5000/RTX 6000/A10/A100等）
+- **CPU**: 4コア以上
+- **RAM**: 32GB以上
+- **ストレージ**: 50GB以上
+
+#### 推論のみ
+- **FP16**: 16-24GB VRAM
+- **4bit量子化**: 8-12GB VRAM（`bitsandbytes`使用時）
+
+### セットアップ手順（Ubuntu系インスタンス）
+
+```bash
+# 1. ドライバとGPU確認
+nvidia-smi | cat
+
+# 2. Python & venv
+sudo apt-get update -y && sudo apt-get install -y python3.10-venv git
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. pipの高速化
+pip install -U pip setuptools wheel
+
+# 4. 依存関係インストール
+pip install -r requirements.txt
+
+# 5. （学習時のみ）accelerate初期化
+accelerate config default
+# または非対話式:
+accelerate config --config_file ~/.cache/huggingface/accelerate/default_config.yaml \
+  --mixed_precision fp16 --num_processes 1 --num_machines 1 \
+  --use_cpu false --dynamo_backend no
+```
+
+### 環境変数設定（推奨）
+
+```bash
+# OOM回避
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# HFキャッシュを大きいディスクに
+export HF_HOME=/workspace/.cache/huggingface
+mkdir -p "$HF_HOME"
+```
+
+### Hugging Face認証（推奨）
+
+```bash
+# レート制限回避・プライベートモデル取得用
+huggingface-cli login --token <YOUR_HF_TOKEN> --add-to-git-credential
+```
+
+### クラウド環境での実行例
+
+```bash
+# LoRA学習
+python train_lora.py \
+  --train_file data/train.jsonl \
+  --output_dir outputs_lora \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 8 \
+  --learning_rate 2e-4 \
+  --num_train_epochs 1 \
+  --bf16 True
+
+# LoRA推論
+python inference_lora.py \
+  --adapter_dir outputs_lora \
+  --prompt "こんにちは！"
+
+# マージ済みモデル推論
+python inference_merged.py \
+  --model_dir merged_qwen \
+  --prompt "こんにちは！"
+```
+
+### トラブルシューティング（クラウド環境）
+
+1. **CUDA/ドライバエラー**
+   ```bash
+   # ドライバ確認
+   nvidia-smi
+   # PyTorch再インストール
+   pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu124
+   ```
+
+2. **OOM（Out of Memory）**
+   - `bf16=True`使用
+   - `gradient_accumulation_steps`増加
+   - `per_device_train_batch_size`減少
+   - 4bit量子化検討（`bitsandbytes`）
+
+3. **ネットワーク問題**
+   - `HF_HOME`を大きいディスクに設定
+   - モデルを事前に`git lfs`でダウンロード
+
 ## プロジェクト構成
 
 ```
@@ -50,6 +156,10 @@ LocalLLMLoRA/
 └── venv/                   # 仮想環境
 ```
 
+
+
+
+
 ## 使用方法
 
 ### 1. 学習データの準備
@@ -58,14 +168,6 @@ LocalLLMLoRA/
 
 #### 基本的な使用方法
 
-```bash
-python build_jsonl.py \
-  --input your_text_file.txt \
-  --output data/train.jsonl \
-  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
-  --task summarize \
-  --chunk-tokens 400
-```
 ```bash
 python build_jsonl.py \
   --input data/long.txt \
@@ -86,7 +188,7 @@ python build_jsonl.py \
 
 #### タスクの種類
 
-1. **要約タスク**（`summarize`）
+1. **チャンク化タスク**（`summarize`）
 ```bash
 python build_jsonl.py \
   --input long.txt \
@@ -111,7 +213,17 @@ python build_jsonl.py \
 3. **同一性タスク**（`identity`）
 ```bash
 python build_jsonl.py \
-  --input corpus.txt \
+  --input data/corpus.txt \
+  --output data/train.jsonl \
+  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
+  --task identity \
+  --chunk-tokens 480 \
+  --fill-assistant same
+```
+自分の実行環境だとpython3を使用しています。
+```bash
+python3 build_jsonl.py \
+  --input data/long.txt \
   --output data/train.jsonl \
   --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
   --task identity \
@@ -119,12 +231,16 @@ python build_jsonl.py \
   --fill-assistant same
 ```
 
+
 ### 2. LoRAファインチューニング
 
 学習データが準備できたら、LoRAファインチューニングを実行します。
 
 ```bash
 # accelerateを使用した学習（推奨）
+学習前に一旦.
+python inference_lora.pyもやっておくと比較できるかも
+python train_lora.py
 accelerate launch --config_file accelerate_config.yaml train_lora.py \
   --model_name_or_path "Qwen/Qwen2.5-0.5B-Instruct" \
   --train_file "data/train.jsonl" \
@@ -202,7 +318,7 @@ LoRAアダプターをベースモデルに統合して、単体のモデルと�
 # LoRAアダプターをベースモデルに統合
 python merge_and_save.py
 ```
-
+作成したモデルを元モデルに結合
 このスクリプトは以下の処理を行います：
 - ベースモデルとLoRAアダプターを読み込み
 - LoRAの重みをベースモデルに統合
@@ -214,7 +330,7 @@ python merge_and_save.py
 # マージされたモデルで推論実行
 python inference_merged.py
 ```
-
+ここの場面で精度が出るはず
 または、Pythonスクリプト内で直接使用：
 
 ```python
@@ -256,12 +372,93 @@ response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print(response)
 ```
 
-#### LoRAアダプター vs マージされたモデル
+## LoRA vs マージ方式の比較
 
-| 方法 | メリット | デメリット | 用途 |
-|------|----------|------------|------|
-| **LoRAアダプター** | ・ファイルサイズが小さい<br>・複数のタスクに対応可能<br>・メモリ効率が良い | ・ベースモデルが必要<br>・読み込み時間が長い | ・開発・実験段階<br>・複数タスクの切り替え |
-| **マージされたモデル** | ・単体で動作<br>・読み込みが高速<br>・デプロイが簡単 | ・ファイルサイズが大きい<br>・特定タスクに固定 | ・本番環境<br>・単一タスクの運用 |
+このプロジェクトでは2つのアプローチを提供しています：
+
+### 1. LoRAアダプター方式（上書き・追加学習）
+
+**動作原理**:
+- 元モデルの重みは**そのまま保持**
+- LoRAアダプタ（小さな追加パラメータ）を学習
+- 推論時は元モデル + LoRAアダプタを動的に組み合わせ
+
+**メリット**:
+- ファイルサイズが小さい（数MB〜数十MB）
+- 複数のタスクに対応可能（アダプタを切り替え）
+- メモリ効率が良い
+- 元モデルの能力を完全に保持
+
+**デメリット**:
+- 推論時にベースモデル + アダプタ両方必要
+- 読み込み時間が長い
+- デプロイが複雑
+
+**用途**: 開発・実験段階、複数タスクの切り替え
+
+### 2. マージ方式（完全統合）
+
+**動作原理**:
+- LoRAアダプタの重みを元モデルに**完全統合**
+- 新しい単体モデルとして保存
+- 推論時は統合済みモデルのみ使用
+
+**メリット**:
+- 単体モデルで動作
+- 読み込みが高速
+- デプロイが簡単
+- 配布しやすい
+
+**デメリット**:
+- ファイルサイズが大きい（元モデルと同じサイズ）
+- 特定タスクに固定
+- 元モデルは変更される
+
+**用途**: 本番環境、単一タスクの運用
+
+### 具体的な比較
+
+| 項目 | LoRAアダプター | マージ方式 |
+|------|----------------|------------|
+| **ファイルサイズ** | 小さい（数MB〜数十MB） | 大きい（元モデルと同じ） |
+| **推論速度** | やや遅い（組み合わせ処理） | 高速（単体モデル） |
+| **メモリ使用量** | 効率的 | 標準的 |
+| **デプロイ** | 複雑（2つのファイル） | 簡単（1つのファイル） |
+| **タスク切り替え** | 可能（アダプタ交換） | 不可（固定） |
+| **元モデル保持** | 完全保持 | 統合される |
+
+### どちらを選ぶべき？
+
+#### LoRA方式を選ぶ場合
+- 複数のタスクで使い回したい
+- 開発・実験段階
+- ストレージ容量を節約したい
+- 元モデルを保持したい
+
+#### マージ方式を選ぶ場合
+- 本番環境でデプロイしたい
+- 単一のタスクに特化したい
+- 推論速度を重視したい
+- 配布・共有したい
+
+### 実際の動作例
+
+学習データ（村上春樹風文章、要約タスク）での結果：
+
+**LoRA方式**:
+- 元モデルの基本能力 + 学習データの特徴
+- 不完全な出力（途中で切れる場合あり）
+
+**マージ方式**:
+- より完成度の高い出力
+- 元モデルの能力 + 学習データの特徴が統合
+- 安定した品質
+
+### 推奨ワークフロー
+
+1. **開発段階**: LoRA方式で実験・調整
+2. **本番準備**: マージ方式で統合モデル作成
+3. **配布**: マージ済みモデルを配布
 
 ## モデルの追加方法
 
@@ -327,15 +524,25 @@ python build_jsonl.py \
    - バッチサイズを小さくする
    - 勾配累積ステップ数を増やす
    - より小さなモデルを使用する
+   - `bf16=True`を使用する
+   - 4bit量子化を検討する（`bitsandbytes`）
 
 2. **トークナイザーエラー**
    - モデルIDが正しいか確認
    - ローカルパスの場合は、モデルファイルが存在するか確認
+   - `trust_remote_code=True`を追加
 
 3. **学習が進まない**
-   - 学習率を調整する
+   - 学習率を調整する（1e-4 ～ 5e-4）
    - データの品質を確認する
    - エポック数を増やす
+   - LoRAのrankを調整する
+
+4. **クラウド環境での問題**
+   - ドライババージョンを確認（R550+推奨）
+   - PyTorchのCUDAバージョンを確認
+   - ネットワーク接続を確認
+   - ディスク容量を確認
 
 ### ログの確認
 
@@ -344,6 +551,24 @@ python build_jsonl.py \
 ```bash
 # 学習ログの確認
 tail -f outputs_lora/training_log.txt
+
+# GPU使用状況の確認
+nvidia-smi
+
+# メモリ使用量の確認
+htop
+```
+
+### デバッグ用の設定
+
+```python
+# 学習可能パラメータの確認
+model.print_trainable_parameters()
+
+# LoRAパラメータの確認
+for n, p in model.named_parameters():
+    if p.requires_grad and "lora_" in n:
+        print("[TRAINABLE]", n, tuple(p.shape))
 ```
 
 ## ライセンス

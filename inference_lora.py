@@ -13,7 +13,7 @@ if tokenizer.pad_token is None:
 base = AutoModelForCausalLM.from_pretrained(BASE_ID, device_map="auto", torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16)
 model = PeftModel.from_pretrained(base, ADAPTER_DIR)
 
-def chat(messages, max_new_tokens=128):
+def chat(messages, max_new_tokens=1024):
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
     with torch.no_grad():
