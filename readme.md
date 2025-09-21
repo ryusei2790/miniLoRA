@@ -24,12 +24,28 @@
 
 ### 依存関係のインストール
 
+# Gitとvenvをインストール
+sudo apt-get update -y && sudo apt-get install -y git python3.10-venv
+
+# リポジトリをクローン
+git clone https://github.com/<YOUR_USERNAME>/LocalLLMLoRA.git
+cd LocalLLMLoRA
+
 ```bash
 # 仮想環境の作成（推奨）
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # または
 venv\Scripts\activate     # Windows
+
+データセット
+cd ~/miniLoRA/data
+touch long.txst
+
+nano long.txt
+
+保存は Ctrl+O → Enter → Ctrl+X
+
 
 # 必要なパッケージのインストール
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -115,12 +131,12 @@ python train_lora.py \
 # LoRA推論
 python inference_lora.py \
   --adapter_dir outputs_lora \
-  --prompt "こんにちは！"
+  --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
 
 # マージ済みモデル推論
 python inference_merged.py \
   --model_dir merged_qwen \
-  --prompt "こんにちは！"
+  --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
 ```
 
 ### トラブルシューティング（クラウド環境）
