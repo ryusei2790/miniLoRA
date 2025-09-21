@@ -230,7 +230,17 @@ python3 build_jsonl.py \
   --chunk-tokens 480 \
   --fill-assistant same
 ```
-
+```
+python3 build_jsonl.py \
+  --input data/long.txt \
+  --output data/train.jsonl \
+  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
+  --task identity \
+  --chunk-tokens 480 \
+  --fill-assistant same \
+  --delimiter '^---$' \
+  --delimiter-regex
+```
 
 ### 2. LoRAファインチューニング
 

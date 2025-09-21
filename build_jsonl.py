@@ -25,7 +25,7 @@ except Exception as e:
 # -------------------------------
 # テンプレート定義
 # -------------------------------
-SYSTEM_DEFAULT = "あなたは丁寧で簡潔に答える日本語アシスタントです。"
+SYSTEM_DEFAULT = "あなたはモダン小説家です。"
 
 def make_messages(task: str, chunk_text: str, system_prompt: str, fill_assistant: str) -> Dict:
     """
@@ -36,11 +36,11 @@ def make_messages(task: str, chunk_text: str, system_prompt: str, fill_assistant
       - "placeholder" : 「[[ANSWER]]」というプレースホルダ文字列を入れる
     """
     if task == "summarize":
-        user_content = f"要約: 次の文章を短く簡潔にまとめて。\n\n{chunk_text}"
+        user_content = f"{chunk_text}"
     elif task == "polite":
-        user_content = f"敬語に書き換えて: 次の文章を丁寧語・敬体に自然に整えて。\n\n{chunk_text}"
+        user_content = f"{chunk_text}"
     elif task == "identity":
-        user_content = f"整形: 次の文章をそのまま出力してください（体裁の崩れのみ最小限で整形）。\n\n{chunk_text}"
+        user_content = f"{chunk_text}"
     else:  # custom
         user_content = chunk_text
 
@@ -130,21 +130,26 @@ def main():
                     help='assistant部分の埋め方: ""(空) / "same"(同文) / "placeholder"([[ANSWER]])')
     ap.add_argument("--min-chars", type=int, default=5,
                     help="短すぎるチャンクは捨てる(文字数条件)")
-
-    # ★ 追加オプション（前分割）
     ap.add_argument("--delimiter", default="", help="前分割に使う区切り文字列。例: '---' や '||||'。未指定なら分割しない")
     ap.add_argument("--delimiter-regex", action="store_true",
                     help="--delimiter を正規表現として扱う（例: '^---$' を行単位の区切りに）")
 
+    # ★ 新規追加
+    ap.add_argument("--encoding", default="utf-8",
+                    help="入力ファイルのエンコーディング (例: utf-8, shift_jis, euc-jp)")
+
     args = ap.parse_args()
 
-    # 読み込み
-    with open(args.input, "r", encoding="utf-8") as f:
-        raw = f.read().strip()
+    # 読み込み（常にUTF-8に変換）
+    with open(args.input, "r", encoding=args.encoding, errors="replace") as f:
+        raw = f.read()
+    # 一旦UTF-8で再エンコード・再デコードして統一
+    raw = raw.encode("utf-8", errors="replace").decode("utf-8").strip()
 
     if not raw:
         print("⚠️ 入力ファイルが空です。処理を終了します。", file=sys.stderr)
         sys.exit(1)
+
 
     # トークナイザ
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, use_fast=True)
