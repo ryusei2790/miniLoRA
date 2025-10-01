@@ -4,55 +4,65 @@
 
 ## 目次
 
-- [インストール](#インストール)
-- [クラウドGPU環境での実行](#クラウドgpu環境での実行)
-- [プロジェクト構成](#プロジェクト構成)
-- [使用方法](#使用方法)
-  - [1. 学習データの準備](#1-学習データの準備)
-  - [2. LoRAファインチューニング](#2-loraファインチューニング)
-  - [3. 推論](#3-推論)
-- [LoRA vs マージ方式の比較](#lora-vs-マージ方式の比較)
-- [モデルの追加方法](#モデルの追加方法)
-- [設定のカスタマイズ](#設定のカスタマイズ)
-- [トラブルシューティング](#トラブルシューティング)
+* [インストール](#インストール)
+* [SSH接続してLambdaLabsの実行スタート](#ssh接続してlambdalabsの実行スタート)
+* [クラウドGPU環境での実行](#クラウドgpu環境での実行)
+* [プロジェクト構成](#プロジェクト構成)
+* [使用方法](#使用方法)
+
+  * [1. 学習データの準備](#1-学習データの準備)
+  * [2. LoRAファインチューニング](#2-loraファインチューニング)
+  * [3. 推論](#3-推論)
+* [Lambda Labs 実行メモ（HFキャッシュ先とデータパス）](#lambda-labs-実行メモhfキャッシュ先とデータパス)
+* [LoRA vs マージ方式の比較](#lora-vs-マージ方式の比較)
+* [モデルの追加方法](#モデルの追加方法)
+* [設定のカスタマイズ](#設定のカスタマイズ)
+* [トラブルシューティング](#トラブルシューティング)
+
+## SSH接続してLambdaLabsの実行スタート
+
+```bash
+ssh -i ~/.ssh/id_ed25519 ubuntu@<インスタンスのIPアドレス>
+```
 
 ## インストール
 
 ### 必要な環境
-- Python 3.8以上
-- CUDA対応GPU（推奨）
+
+* Python 3.8以上（3.10推奨）
+* CUDA対応GPU（推奨）
 
 ### 依存関係のインストール
 
-# Gitとvenvをインストール
+```bash
+# Gitとvenvをインストール（Ubuntu）
 sudo apt-get update -y && sudo apt-get install -y git python3.10-venv
 
-# リポジトリをクローン
+# リポジトリをクローン（あなたのユーザー名に置き換え）
 git clone https://github.com/<YOUR_USERNAME>/LocalLLMLoRA.git
-cd LocalLLMLoRA
+cd LocalLLMLoRA   # or miniLoRA（あなたの環境に合わせて）
 
-```bash
 # 仮想環境の作成（推奨）
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
-# または
-venv\Scripts\activate     # Windows
+# または（Windows）
+# venv\\Scripts\\activate
 
-データセット
-cd ~/miniLoRA/data
-touch long.txst
+# データセット用ディレクトリ
+mkdir -p data
+cd ~/LocalLLMLoRA/data
 
+# サンプルの空ファイル
+touch long.txt   # ← 以前の 'long.txst' はタイポ
+
+# テキスト編集（必要なら）
 nano long.txt
+# 保存は Ctrl+O → Enter → Ctrl+X
 
-保存は Ctrl+O → Enter → Ctrl+X
-
-
-# 必要なパッケージのインストール
+# 必要なパッケージのインストール（CUDA 11.8 の例）
+pip install -U pip setuptools wheel
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install transformers
-pip install peft
-pip install accelerate
-pip install datasets
+pip install transformers peft accelerate datasets
 ```
 
 ## クラウドGPU環境での実行
@@ -62,14 +72,16 @@ pip install datasets
 ### 推奨スペック
 
 #### 学習（LoRA、Qwen2.5-0.5B級）
-- **GPU**: 24GB VRAM以上（A5000/RTX 6000/A10/A100等）
-- **CPU**: 4コア以上
-- **RAM**: 32GB以上
-- **ストレージ**: 50GB以上
+
+* **GPU**: 24GB VRAM以上（A5000/RTX 6000/A10/A100等）
+* **CPU**: 4コア以上
+* **RAM**: 32GB以上
+* **ストレージ**: 50GB以上
 
 #### 推論のみ
-- **FP16**: 16-24GB VRAM
-- **4bit量子化**: 8-12GB VRAM（`bitsandbytes`使用時）
+
+* **FP16**: 16-24GB VRAM
+* **4bit量子化**: 8-12GB VRAM（`bitsandbytes`使用時）
 
 ### セットアップ手順（Ubuntu系インスタンス）
 
@@ -86,7 +98,8 @@ source .venv/bin/activate
 pip install -U pip setuptools wheel
 
 # 4. 依存関係インストール
-pip install -r requirements.txt
+pip install -r requirements.txt  # ある場合
+# or: pip install transformers peft accelerate datasets
 
 # 5. （学習時のみ）accelerate初期化
 accelerate config default
@@ -102,9 +115,12 @@ accelerate config --config_file ~/.cache/huggingface/accelerate/default_config.y
 # OOM回避
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# HFキャッシュを大きいディスクに
-export HF_HOME=/workspace/.cache/huggingface
-mkdir -p "$HF_HOME"
+# HFキャッシュはホーム配下に固定（/workspace を参照しないように）
+mkdir -p /home/ubuntu/.cache/huggingface/hub
+export HF_HOME=/home/ubuntu/.cache/huggingface
+export HF_HUB_CACHE=/home/ubuntu/.cache/huggingface/hub
+export TRANSFORMERS_CACHE=/home/ubuntu/.cache/huggingface/hub
+export XDG_CACHE_HOME=/home/ubuntu/.cache
 ```
 
 ### Hugging Face認証（推奨）
@@ -139,42 +155,22 @@ python inference_merged.py \
   --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
 ```
 
-### トラブルシューティング（クラウド環境）
-
-1. **CUDA/ドライバエラー**
-   ```bash
-   # ドライバ確認
-   nvidia-smi
-   # PyTorch再インストール
-   pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu124
-   ```
-
-2. **OOM（Out of Memory）**
-   - `bf16=True`使用
-   - `gradient_accumulation_steps`増加
-   - `per_device_train_batch_size`減少
-   - 4bit量子化検討（`bitsandbytes`）
-
-3. **ネットワーク問題**
-   - `HF_HOME`を大きいディスクに設定
-   - モデルを事前に`git lfs`でダウンロード
-
 ## プロジェクト構成
 
 ```
 LocalLLMLoRA/
 ├── build_jsonl.py          # テキストファイルをJSONL形式に変換
+├── train_lora.py           # LoRA学習（accelerate使用版など）
+├── train_lora_lambda.py    # Lambda Labs 向け簡易スクリプト
 ├── inference_lora.py       # LoRAモデルでの推論
+├── merge_and_save.py       # LoRA→ベースにマージ
+├── inference_merged.py     # マージ済みモデルでの推論
 ├── example_data.jsonl      # サンプルデータ
 ├── data/                   # 学習データディレクトリ
 ├── outputs_lora/           # LoRAアダプターの出力ディレクトリ
 ├── merged_qwen/            # マージされたモデルディレクトリ
 └── venv/                   # 仮想環境
 ```
-
-
-
-
 
 ## 使用方法
 
@@ -185,29 +181,31 @@ LocalLLMLoRA/
 #### 基本的な使用方法
 
 ```bash
-python build_jsonl.py \
+python3 build_jsonl.py \
   --input data/long.txt \
   --output data/train.jsonl \
   --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
   --task summarize \
   --chunk-tokens 400
 ```
+
 #### パラメータの説明
 
-- `--input`: 入力テキストファイル（.txt、.mdなど）
-- `--output`: 出力JSONLファイルのパス
-- `--model-id`: トークナイザーに使用するモデルID（Hugging Face Hubまたはローカルパス）
-- `--task`: タスクの種類（`summarize`, `polite`, `identity`, `custom`）
-- `--chunk-tokens`: 1チャンクあたりの最大トークン数
-- `--system`: システムプロンプト（デフォルト: "あなたは丁寧で簡潔に答える日本語アシスタントです。"）
-- `--fill-assistant`: assistant部分の埋め方（`""`（空）, `"same"`（同文）, `"placeholder"`）
+* `--input`: 入力テキストファイル（.txt、.mdなど）
+* `--output`: 出力JSONLファイルのパス
+* `--model-id`: トークナイザーに使用するモデルID（Hugging Face Hubまたはローカルパス）
+* `--task`: タスクの種類（`summarize`, `polite`, `identity`, `custom`）
+* `--chunk-tokens`: 1チャンクあたりの最大トークン数
+* `--system`: システムプロンプト（デフォルト: "あなたは丁寧で簡潔に答える日本語アシスタントです。"）
+* `--fill-assistant`: assistant部分の埋め方（`""`（空）, `"same"`（同文）, `"placeholder"`）
 
 #### タスクの種類
 
 1. **チャンク化タスク**（`summarize`）
+
 ```bash
-python build_jsonl.py \
-  --input long.txt \
+python3 build_jsonl.py \
+  --input data/long.txt \
   --output data/train.jsonl \
   --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
   --task summarize \
@@ -216,9 +214,10 @@ python build_jsonl.py \
 ```
 
 2. **変換タスク**（`polite`）
+
 ```bash
-python build_jsonl.py \
-  --input casual.txt \
+python3 build_jsonl.py \
+  --input data/casual.txt \
   --output data/train.jsonl \
   --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
   --task polite \
@@ -227,8 +226,9 @@ python build_jsonl.py \
 ```
 
 3. **同一性タスク**（`identity`）
+
 ```bash
-python build_jsonl.py \
+python3 build_jsonl.py \
   --input data/corpus.txt \
   --output data/train.jsonl \
   --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
@@ -236,17 +236,10 @@ python build_jsonl.py \
   --chunk-tokens 480 \
   --fill-assistant same
 ```
-自分の実行環境だとpython3を使用しています。
+
+> 区切り文字で文章を分けたい場合（例：`---` の行で分割）
+
 ```bash
-python3 build_jsonl.py \
-  --input data/long.txt \
-  --output data/train.jsonl \
-  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
-  --task identity \
-  --chunk-tokens 480 \
-  --fill-assistant same
-```
-```
 python3 build_jsonl.py \
   --input data/long.txt \
   --output data/train.jsonl \
@@ -263,10 +256,10 @@ python3 build_jsonl.py \
 学習データが準備できたら、LoRAファインチューニングを実行します。
 
 ```bash
-# accelerateを使用した学習（推奨）
-学習前に一旦.
-python inference_lora.pyもやっておくと比較できるかも
-python train_lora.py
+# 事前にベース精度を確認しておくと比較に便利
+python3 inference_lora.py --adapter_dir outputs_lora --prompt "こんにちは"
+
+# accelerateを使用した学習（例）
 accelerate launch --config_file accelerate_config.yaml train_lora.py \
   --model_name_or_path "Qwen/Qwen2.5-0.5B-Instruct" \
   --train_file "data/train.jsonl" \
@@ -281,122 +274,105 @@ accelerate launch --config_file accelerate_config.yaml train_lora.py \
 
 ### 3. 推論
 
-学習済みのLoRAアダプターを使用して推論を行います。
-
 #### 3-1. LoRAアダプターでの推論
 
 ```bash
-# inference_lora.pyを実行
-python inference_lora.py
-```
-
-または、Pythonスクリプト内で直接使用：
-
-```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-
-# ベースモデルとLoRAアダプターの読み込み
-BASE_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-ADAPTER_DIR = "./outputs_lora"
-
-tokenizer = AutoTokenizer.from_pretrained(BASE_ID, use_fast=True)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-
-base = AutoModelForCausalLM.from_pretrained(
-    BASE_ID, 
-    device_map="auto", 
-    torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16
-)
-model = PeftModel.from_pretrained(base, ADAPTER_DIR)
-
-# 推論実行
-messages = [
-    {"role": "system", "content": "あなたは丁寧で簡潔に答える日本語アシスタントです。"},
-    {"role": "user", "content": "敬語に書き換えて: 明日いけますか？"}
-]
-
-text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    outputs = model.generate(
-        **inputs, 
-        max_new_tokens=128, 
-        do_sample=True, 
-        top_p=0.9, 
-        temperature=0.7
-    )
-
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print(response)
+python3 inference_lora.py --adapter_dir outputs_lora --prompt "敬語に書き換えて: 明日いけますか？"
 ```
 
 #### 3-2. マージされたモデルでの推論
 
-LoRAアダプターをベースモデルに統合して、単体のモデルとして使用することもできます。
-
-##### マージの実行
-
 ```bash
 # LoRAアダプターをベースモデルに統合
-python merge_and_save.py
-```
-作成したモデルを元モデルに結合
-このスクリプトは以下の処理を行います：
-- ベースモデルとLoRAアダプターを読み込み
-- LoRAの重みをベースモデルに統合
-- 統合されたモデルを`merged_qwen/`ディレクトリに保存
+python3 merge_and_save.py
 
-##### マージされたモデルでの推論
+# マージ済みモデルで推論
+python3 inference_merged.py --model_dir merged_qwen --prompt "敬語に書き換えて: 明日いけますか？"
+```
+
+---
+
+## Lambda Labs 実行メモ（HFキャッシュ先とデータパス）
+
+**背景**: 一部の Lambda Labs イメージでは既定で `HF_HOME=/workspace/.cache/huggingface` になっており、`/workspace` が存在しない/権限が無いと **`PermissionError: '/workspace'`** が発生します。以下は実際に解決した手順のまとめです。
+
+### 1) 現状確認
 
 ```bash
-# マージされたモデルで推論実行
-python inference_merged.py
+printenv | egrep 'HF|HUGGINGFACE|TRANSFORMERS|XDG'
+ls -ld /workspace  # 無い/アクセス不可なら次へ
 ```
-ここの場面で精度が出るはず
-または、Pythonスクリプト内で直接使用：
+
+### 2) キャッシュ先をホーム配下に切替（このシェルだけで有効）
+
+```bash
+mkdir -p /home/ubuntu/.cache/huggingface/hub
+chmod -R 700 /home/ubuntu/.cache
+
+export HF_HOME=/home/ubuntu/.cache/huggingface
+export HF_HUB_CACHE=/home/ubuntu/.cache/huggingface/hub
+export TRANSFORMERS_CACHE=/home/ubuntu/.cache/huggingface/hub
+export XDG_CACHE_HOME=/home/ubuntu/.cache
+
+# 反映確認
+printenv HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE XDG_CACHE_HOME
+```
+
+> 注: 実行時に `FutureWarning: Using TRANSFORMERS_CACHE is deprecated ... Use HF_HOME instead` が出る場合があります。`HF_HOME` を設定していれば問題ありません。
+
+### 3) ロックファイルの削除（必要に応じて）
+
+```bash
+find /home/ubuntu/.cache/huggingface -name "*.lock" -type f -delete
+```
+
+### 4) FileNotFoundError（データファイル未設置）の対処
+
+```bash
+# まず存在確認
+ls -l /home/ubuntu/data/train.jsonl || ls -l ~/LocalLLMLoRA/data/train.jsonl
+
+# 正しい場所をDATA_FILEで渡す
+export DATA_FILE=/home/ubuntu/LocalLLMLoRA/data/train.jsonl  # 実在パスに合わせて
+python3 train_lora_lambda.py
+```
+
+#### 最小JSONLを作って動作確認する
+
+```bash
+mkdir -p /home/ubuntu/data
+cat > /home/ubuntu/data/train.jsonl <<'EOF'
+{"messages":[
+  {"role":"system","content":"あなたは丁寧な日本語アシスタントです。"},
+  {"role":"user","content":"こんにちは"},
+  {"role":"assistant","content":"こんにちは！今日は何をしますか？"}
+]}
+{"messages":[
+  {"role":"system","content":"あなたは丁寧な日本語アシスタントです。"},
+  {"role":"user","content":"自己紹介して"},
+  {"role":"assistant","content":"はい、よろしくお願いします。"}
+]}
+EOF
+
+export DATA_FILE=/home/ubuntu/data/train.jsonl
+python3 train_lora_lambda.py
+```
+
+#### さらに堅くする（コード側で `cache_dir` を明示）
 
 ```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# train_lora_lambda.py の抜粋
+CACHE_DIR = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
 
-# マージされたモデルを読み込み
-MODEL_DIR = "./merged_qwen"
+from datasets import load_dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, use_fast=True)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_DIR, 
-    device_map="auto", 
-    torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16
-)
-
-# 推論実行
-messages = [
-    {"role": "system", "content": "あなたは丁寧で簡潔に答える日本語アシスタントです。"},
-    {"role": "user", "content": "敬語に書き換えて: 明日いけますか？"}
-]
-
-text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    outputs = model.generate(
-        **inputs, 
-        max_new_tokens=128, 
-        do_sample=True, 
-        top_p=0.9, 
-        temperature=0.7
-    )
-
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print(response)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, use_fast=True, cache_dir=CACHE_DIR)
+dataset   = load_dataset("json", data_files=DATA_FILE, cache_dir=CACHE_DIR)["train"]
+base_model= AutoModelForCausalLM.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR, **kwargs)
 ```
+
+---
 
 ## LoRA vs マージ方式の比較
 
@@ -405,80 +381,59 @@ print(response)
 ### 1. LoRAアダプター方式（上書き・追加学習）
 
 **動作原理**:
-- 元モデルの重みは**そのまま保持**
-- LoRAアダプタ（小さな追加パラメータ）を学習
-- 推論時は元モデル + LoRAアダプタを動的に組み合わせ
+
+* 元モデルの重みは**そのまま保持**
+* LoRAアダプタ（小さな追加パラメータ）を学習
+* 推論時は元モデル + LoRAアダプタを動的に組み合わせ
 
 **メリット**:
-- ファイルサイズが小さい（数MB〜数十MB）
-- 複数のタスクに対応可能（アダプタを切り替え）
-- メモリ効率が良い
-- 元モデルの能力を完全に保持
+
+* ファイルサイズが小さい（数MB〜数十MB）
+* 複数のタスクに対応可能（アダプタを切り替え）
+* メモリ効率が良い
+* 元モデルの能力を完全に保持
 
 **デメリット**:
-- 推論時にベースモデル + アダプタ両方必要
-- 読み込み時間が長い
-- デプロイが複雑
+
+* 推論時にベースモデル + アダプタ両方必要
+* 読み込み時間が長い
+* デプロイが複雑
 
 **用途**: 開発・実験段階、複数タスクの切り替え
 
 ### 2. マージ方式（完全統合）
 
 **動作原理**:
-- LoRAアダプタの重みを元モデルに**完全統合**
-- 新しい単体モデルとして保存
-- 推論時は統合済みモデルのみ使用
+
+* LoRAアダプタの重みを元モデルに**完全統合**
+* 新しい単体モデルとして保存
+* 推論時は統合済みモデルのみ使用
 
 **メリット**:
-- 単体モデルで動作
-- 読み込みが高速
-- デプロイが簡単
-- 配布しやすい
+
+* 単体モデルで動作
+* 読み込みが高速
+* デプロイが簡単
+* 配布しやすい
 
 **デメリット**:
-- ファイルサイズが大きい（元モデルと同じサイズ）
-- 特定タスクに固定
-- 元モデルは変更される
+
+* ファイルサイズが大きい（元モデルと同じサイズ）
+* 特定タスクに固定
+* 元モデルは変更される
 
 **用途**: 本番環境、単一タスクの運用
 
 ### 具体的な比較
 
-| 項目 | LoRAアダプター | マージ方式 |
-|------|----------------|------------|
+| 項目          | LoRAアダプター     | マージ方式        |
+| ----------- | ------------- | ------------ |
 | **ファイルサイズ** | 小さい（数MB〜数十MB） | 大きい（元モデルと同じ） |
-| **推論速度** | やや遅い（組み合わせ処理） | 高速（単体モデル） |
-| **メモリ使用量** | 効率的 | 標準的 |
-| **デプロイ** | 複雑（2つのファイル） | 簡単（1つのファイル） |
-| **タスク切り替え** | 可能（アダプタ交換） | 不可（固定） |
-| **元モデル保持** | 完全保持 | 統合される |
-
-### どちらを選ぶべき？
-
-#### LoRA方式を選ぶ場合
-- 複数のタスクで使い回したい
-- 開発・実験段階
-- ストレージ容量を節約したい
-- 元モデルを保持したい
-
-#### マージ方式を選ぶ場合
-- 本番環境でデプロイしたい
-- 単一のタスクに特化したい
-- 推論速度を重視したい
-- 配布・共有したい
-
-### 実際の動作例
-
-学習データ（村上春樹風文章、要約タスク）での結果：
-
-**LoRA方式**:
-- 元モデルの基本能力 + 学習データの特徴
-- 不完全な出力（途中で切れる場合あり）
-
-**マージ方式**:
-- より完成度の高い出力
-- 元モデルの能力 + 学習データの特徴が統合
-- 安定した品質
+| **推論速度**    | やや遅い（組み合わせ処理） | 高速（単体モデル）    |
+| **メモリ使用量**  | 効率的           | 標準的          |
+| **デプロイ**    | 複雑（2つのファイル）   | 簡単（1つのファイル）  |
+| **タスク切り替え** | 可能（アダプタ交換）    | 不可（固定）       |
+| **元モデル保持**  | 完全保持          | 統合される        |
 
 ### 推奨ワークフロー
 
@@ -491,21 +446,24 @@ print(response)
 ### 新しいベースモデルの使用
 
 1. **Hugging Face Hubからモデルをダウンロード**
+
 ```bash
 # モデルをローカルにダウンロード
 git lfs install
 git clone https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
 ```
 
-2. **inference_lora.pyの設定を変更**
+2. **inference\_lora.pyの設定を変更**
+
 ```python
 # ベースモデルのパスを変更
 BASE_ID = "/path/to/your/model"  # ローカルパスまたはHugging Face ID
 ```
 
-3. **build_jsonl.pyでモデルIDを指定**
+3. **build\_jsonl.pyでモデルIDを指定**
+
 ```bash
-python build_jsonl.py \
+python3 build_jsonl.py \
   --input your_file.txt \
   --output data/train.jsonl \
   --model-id "/path/to/your/model" \
@@ -514,13 +472,11 @@ python build_jsonl.py \
 
 ### 対応モデル
 
-このプロジェクトは以下のモデルで動作確認済みです：
-
-- Qwen2.5-0.5B-Instruct
-- Qwen2.5-1.5B-Instruct
-- Qwen2.5-3B-Instruct
-- Llama-2-7B-Chat
-- Mistral-7B-Instruct
+* Qwen2.5-0.5B-Instruct
+* Qwen2.5-1.5B-Instruct
+* Qwen2.5-3B-Instruct
+* Llama-2-7B-Chat
+* Mistral-7B-Instruct
 
 その他のモデルも、ChatML形式または類似のチャットテンプレートに対応していれば使用可能です。
 
@@ -528,54 +484,54 @@ python build_jsonl.py \
 
 ### LoRAパラメータの調整
 
-学習時に以下のパラメータを調整できます：
-
-- `--lora_rank`: LoRAのランク（デフォルト: 16）
-- `--lora_alpha`: LoRAのスケーリングパラメータ（デフォルト: 32）
-- `--lora_dropout`: LoRAのドロップアウト率（デフォルト: 0.1）
-- `--target_modules`: 対象とするモジュール（デフォルト: ["q_proj", "v_proj"]）
+* `--lora_rank`: LoRAのランク（デフォルト: 16）
+* `--lora_alpha`: LoRAのスケーリングパラメータ（デフォルト: 32）
+* `--lora_dropout`: LoRAのドロップアウト率（デフォルト: 0.1）
+* `--target_modules`: 対象とするモジュール（デフォルト: \["q\_proj", "v\_proj"]）
 
 ### 学習パラメータの調整
 
-- `--learning_rate`: 学習率（推奨: 1e-4 ～ 5e-4）
-- `--num_train_epochs`: エポック数（推奨: 1-5）
-- `--per_device_train_batch_size`: バッチサイズ
-- `--gradient_accumulation_steps`: 勾配累積ステップ数
+* `--learning_rate`: 学習率（推奨: 1e-4 ～ 5e-4）
+* `--num_train_epochs`: エポック数（推奨: 1-5）
+* `--per_device_train_batch_size`: バッチサイズ
+* `--gradient_accumulation_steps`: 勾配累積ステップ数
 
 ## トラブルシューティング
 
 ### よくある問題と解決方法
 
 1. **CUDA out of memory エラー**
-   - バッチサイズを小さくする
-   - 勾配累積ステップ数を増やす
-   - より小さなモデルを使用する
-   - `bf16=True`を使用する
-   - 4bit量子化を検討する（`bitsandbytes`）
+
+   * バッチサイズを小さくする
+   * 勾配累積ステップ数を増やす
+   * より小さなモデルを使用する
+   * `bf16=True`を使用する
+   * 4bit量子化を検討する（`bitsandbytes`）
 
 2. **トークナイザーエラー**
-   - モデルIDが正しいか確認
-   - ローカルパスの場合は、モデルファイルが存在するか確認
-   - `trust_remote_code=True`を追加
+
+   * モデルIDが正しいか確認
+   * ローカルパスの場合は、モデルファイルが存在するか確認
+   * `trust_remote_code=True`を追加
 
 3. **学習が進まない**
-   - 学習率を調整する（1e-4 ～ 5e-4）
-   - データの品質を確認する
-   - エポック数を増やす
-   - LoRAのrankを調整する
+
+   * 学習率を調整する（1e-4 ～ 5e-4）
+   * データの品質を確認する
+   * エポック数を増やす
+   * LoRAのrankを調整する
 
 4. **クラウド環境での問題**
-   - ドライババージョンを確認（R550+推奨）
-   - PyTorchのCUDAバージョンを確認
-   - ネットワーク接続を確認
-   - ディスク容量を確認
+
+   * ドライババージョンを確認（R550+推奨）
+   * PyTorchのCUDAバージョンを確認
+   * ネットワーク接続を確認
+   * ディスク容量を確認
 
 ### ログの確認
 
-学習中のログを確認して、損失の変化や学習の進捗を監視してください。
-
 ```bash
-# 学習ログの確認
+# 学習ログの確認（例）
 tail -f outputs_lora/training_log.txt
 
 # GPU使用状況の確認
@@ -607,16 +563,14 @@ for n, p in model.named_parameters():
 
 ### 必要なファイル
 
-`outputs_lora`ディレクトリには以下のファイルが含まれています：
-
 ```
 outputs_lora/
-├── adapter_config.json      # LoRAの設定情報
+├── adapter_config.json       # LoRAの設定情報
 ├── adapter_model.safetensors # LoRAの重み
-├── tokenizer.json           # トークナイザー設定
-├── special_tokens_map.json  # 特殊トークン設定
-├── chat_template.jinja      # チャットテンプレート
-└── vocab.json              # 語彙ファイル
+├── tokenizer.json            # トークナイザー設定
+├── special_tokens_map.json   # 特殊トークン設定
+├── chat_template.jinja       # チャットテンプレート
+└── vocab.json                # 語彙ファイル
 ```
 
 ### 別プロジェクトでの使用方法
@@ -656,12 +610,12 @@ model = PeftModel.from_pretrained(base_model, ADAPTER_DIR)
 # 推論関数
 def generate_response(messages, max_new_tokens=128):
     text = tokenizer.apply_chat_template(
-        messages, 
-        tokenize=False, 
+        messages,
+        tokenize=False,
         add_generation_prompt=True
     )
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
-    
+
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -670,7 +624,7 @@ def generate_response(messages, max_new_tokens=128):
             top_p=0.9,
             temperature=0.7
         )
-    
+
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 # 使用例
@@ -685,8 +639,6 @@ print(response)
 
 #### 3. 依存関係のインストール
 
-新しいプロジェクトで必要なライブラリをインストール：
-
 ```bash
 pip install torch transformers peft accelerate
 ```
@@ -695,8 +647,8 @@ pip install torch transformers peft accelerate
 
 #### ベースモデルの互換性
 
-- **同じベースモデルを使用**: 学習時に使用したベースモデルと同じものを使用してください
-- **バージョンの一致**: transformersライブラリのバージョンが大きく異なる場合は互換性の問題が発生する可能性があります
+* **同じベースモデルを使用**: 学習時に使用したベースモデルと同じものを使用してください
+* **バージョンの一致**: transformersライブラリのバージョンが大きく異なる場合は互換性の問題が発生する可能性があります
 
 #### 設定の確認
 
@@ -743,28 +695,31 @@ tar -czf lora_adapter.tar.gz \
 
 配布時に以下の情報を含めることを推奨：
 
-- ベースモデルの情報
-- 学習データの概要
-- 推奨される使用方法
-- システム要件
+* ベースモデルの情報
+* 学習データの概要
+* 推奨される使用方法
+* システム要件
 
 ### トラブルシューティング
 
 #### よくある問題
 
 1. **モデルの読み込みエラー**
+
    ```python
    # 解決策: ベースモデルのパスを確認
    print("Base model path:", model.config.base_model_name_or_path)
    ```
 
 2. **トークナイザーの不一致**
+
    ```python
    # 解決策: ベースモデルのトークナイザーを使用
    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
    ```
 
 3. **デバイスの不一致**
+
    ```python
    # 解決策: デバイスを明示的に指定
    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
@@ -772,4 +727,60 @@ tar -czf lora_adapter.tar.gz \
 
 ## 貢献
 
-バグ報告や機能追加の提案は、GitHubのIssuesまたはPull Requestsでお願いします。
+バグ報告や機能追加の提案は、GitHubのIssuesまたはPull Requestsでお願いします。このバージョンを参照して今のやつの必要なところだけ追記して
+
+
+
+
+
+
+
+
+Lambda Labs → ローカルへの LoRA ZIP ダウンロード手順
+前提
+
+Lambda Labs 上で LoRA モデルを作成済み
+
+ZIP にまとめてある：~/miniLoRA/outputs_lora.zip
+
+ローカル（Mac）には SSH 鍵 ~/.ssh/id_ed25519 / id_ed25519.pub がある
+
+手順 1：ローカル端末で公開鍵を確認
+# ローカル（Mac）で実行
+ls ~/.ssh
+cat ~/.ssh/id_ed25519.pub
+
+
+公開鍵の内容が表示されれば OK
+
+形式は ssh-ed25519 AAAAC3… user@hostname
+
+手順 2：ローカルから Lambda Labs に公開鍵を登録
+# ローカル（Mac）で実行
+ssh-copy-id ubuntu@129.213.18.241
+
+
+初回接続時は以下の確認が出ます → yes と入力
+
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+
+
+成功するとパスワードを入力した後、サーバに鍵が登録されます
+
+これで次回以降はパスワードなしで SSH/SCP が可能
+
+手順 3：ローカルから ZIP をダウンロード
+# ローカル（Mac）で実行
+scp ubuntu@129.213.18.241:~/miniLoRA/outputs_lora.zip ./outputs_lora.zip
+
+
+ダウンロードが完了すると、ローカルに outputs_lora.zip が保存されます
+
+手順 4：ローカルで ZIP を展開
+# ローカル（Mac）で実行
+unzip outputs_lora.zip -d ./outputs_lora
+
+
+サーバ上と同じディレクトリ構造で展開されます
+
+LoRA モデルの本体は adapter_model.safetensors
