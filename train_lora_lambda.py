@@ -1,5 +1,6 @@
 # train_lora_lambda.py
 import os, json
+import argparse
 from datasets import load_dataset
 import torch
 from transformers import (
@@ -33,6 +34,14 @@ if tokenizer.pad_token is None:
 
 # ===== Dataset（chat→textに整形）=====
 # data/train.jsonl は {"messages":[{"role":"system|user|assistant","content":"..."} , ...]} の行を想定
+# dataset = load_dataset("json", data_files=DATA_FILE)["train"]
+parser = argparse.ArgumentParser()
+parser.add_argument("--train_file", type=str, required=True, help="学習データ train.jsonl のパス")
+args = parser.parse_args()
+
+DATA_FILE = args.train_file
+
+# データセットをロード
 dataset = load_dataset("json", data_files=DATA_FILE)["train"]
 
 def to_text(example):
