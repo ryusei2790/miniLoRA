@@ -21,8 +21,9 @@
 
 ## SSH接続してLambdaLabsの実行スタート
 
-```bash
+```bash 
 ssh -i ~/.ssh/id_ed25519 ubuntu@<インスタンスのIPアドレス>
+
 ```
 
 ## インストール
@@ -39,8 +40,8 @@ ssh -i ~/.ssh/id_ed25519 ubuntu@<インスタンスのIPアドレス>
 sudo apt-get update -y && sudo apt-get install -y git python3.10-venv
 
 # リポジトリをクローン（あなたのユーザー名に置き換え）
-git clone https://github.com/<YOUR_USERNAME>/LocalLLMLoRA.git
-cd LocalLLMLoRA   # or miniLoRA（あなたの環境に合わせて）
+git clone https://github.com/<YOUR_USERNAME>/
+cd miniLoRA   # or miniLoRA（あなたの環境に合わせて）
 
 # 仮想環境の作成（推奨）
 python3 -m venv venv
@@ -50,7 +51,7 @@ source venv/bin/activate  # Linux/Mac
 
 # データセット用ディレクトリ
 mkdir -p data
-cd ~/LocalLLMLoRA/data
+cd ~/miniLoRA/data
 
 # サンプルの空ファイル
 touch long.txt   # ← 以前の 'long.txst' はタイポ
@@ -134,7 +135,7 @@ huggingface-cli login --token <YOUR_HF_TOKEN> --add-to-git-credential
 
 ```bash
 # LoRA学習
-python train_lora.py \
+python train_lora_lambda.py \
   --train_file data/train.jsonl \
   --output_dir outputs_lora \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
