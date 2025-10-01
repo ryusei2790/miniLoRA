@@ -39,6 +39,12 @@ ssh -i ~/.ssh/id_ed25519 ubuntu@<インスタンスのIPアドレス>
 # Gitとvenvをインストール（Ubuntu）
 sudo apt-get update -y && sudo apt-get install -y git python3.10-venv
 
+sudo apt update
+sudo apt install git-lfs
+
+git lfs install
+
+
 # リポジトリをクローン（あなたのユーザー名に置き換え）
 git clone https://github.com/<YOUR_USERNAME>/
 cd miniLoRA   # or miniLoRA（あなたの環境に合わせて）
@@ -59,7 +65,7 @@ touch long.txt   # ← 以前の 'long.txst' はタイポ
 # テキスト編集（必要なら）
 nano long.txt
 # 保存は Ctrl+O → Enter → Ctrl+X
-
+cd ..
 # 必要なパッケージのインストール（CUDA 11.8 の例）
 pip install -U pip setuptools wheel
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -131,7 +137,32 @@ export XDG_CACHE_HOME=/home/ubuntu/.cache
 huggingface-cli login --token <YOUR_HF_TOKEN> --add-to-git-credential
 ```
 
+#　モデルのインストール
+```bash
+mkdir qwen_local
+cd qwen_local
+git clone https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+
+```
+# もしくは
+hf download Qwen/Qwen2.5-0.5B-Instruct
+
 ### クラウド環境での実行例
+
+##データ準備
+> 区切り文字で文章を分けたい場合（例：`---` の行で分割）
+
+```bash
+python3 build_jsonl.py \
+  --input data/long.txt \
+  --output data/train.jsonl \
+  --model-id "Qwen/Qwen2.5-0.5B-Instruct" \
+  --task identity \
+  --chunk-tokens 480 \
+  --fill-assistant same \
+  --delimiter '^---$' \
+  --delimiter-regex
+```
 
 ```bash
 # LoRA学習
