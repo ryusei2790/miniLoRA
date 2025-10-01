@@ -91,9 +91,9 @@ pip install transformers peft accelerate datasets
 nvidia-smi | cat
 
 # 2. Python & venv
-sudo apt-get update -y && sudo apt-get install -y python3.10-venv git
-python3 -m venv .venv
-source .venv/bin/activate
+# sudo apt-get update -y && sudo apt-get install -y python3.10-venv git
+# python3 -m venv .venv
+# source .venv/bin/activate
 
 # 3. pipの高速化
 pip install -U pip setuptools wheel
@@ -137,7 +137,7 @@ huggingface-cli login --token <YOUR_HF_TOKEN> --add-to-git-credential
 # LoRA学習
 python train_lora_lambda.py \
   --train_file data/train.jsonl \
-  --output_dir outputs_lora \
+  #--output_dir outputs_lora \
   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \
@@ -145,32 +145,36 @@ python train_lora_lambda.py \
   --num_train_epochs 1 \
   --bf16 True
 
-クラウド環境の実行環境はこっちが良さそうです。
-python train_lora_lambda_next.py \
-  --train_file /home/ubuntu/miniLoRA/data/train.jsonl \
-  --output_dir outputs_lora \
-  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
-  --max_len 1024
+# クラウド環境の実行環境はこっちが良さそうです。
+# python train_lora_lambda_next.py \
+#   --train_file /home/ubuntu/miniLoRA/data/train.jsonl \
+#   --output_dir outputs_lora \
+#   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+#   --max_len 1024
 
-python train_lora_lambda_next.py \
-  --train_file data/train.jsonl \
-  --output_dir outputs_lora \
-  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
-  --per_device_train_batch_size 1 \
-  --gradient_accumulation_steps 8 \
-  --learning_rate 2e-4 \
-  --num_train_epochs 1 \
-  --bf16 True
+# python train_lora_lambda_next.py \
+#   --train_file data/train.jsonl \
+#   --output_dir outputs_lora \
+#   --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+#   --per_device_train_batch_size 1 \
+#   --gradient_accumulation_steps 8 \
+#   --learning_rate 2e-4 \
+#   --num_train_epochs 1 \
+#   --bf16 True
 
 # LoRA推論
 python inference_lora.py \
-  --adapter_dir outputs_lora \
   --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
 
+#マージする
+python merge_and_save.py \
+  --adapter_dir outputs_lora \
+  --merged_dir merged_qwen
+
+
 # マージ済みモデル推論
-python inference_merged.py \
-  --model_dir merged_qwen \
-  --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
+python inference_merged.py --prompt "感動的で人情に訴えかけてくるような新しい小説を作成して"
+
 ```
 
 ## プロジェクト構成
