@@ -145,6 +145,23 @@ python train_lora_lambda.py \
   --num_train_epochs 1 \
   --bf16 True
 
+クラウド環境の実行環境はこっちが良さそうです。
+python train_lora_lambda_next.py \
+  --train_file /home/ubuntu/miniLoRA/data/train.jsonl \
+  --output_dir outputs_lora \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --max_len 1024
+
+python train_lora_lambda_next.py \
+  --train_file data/train.jsonl \
+  --output_dir outputs_lora \
+  --model_name_or_path Qwen/Qwen2.5-7B-Instruct \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 8 \
+  --learning_rate 2e-4 \
+  --num_train_epochs 1 \
+  --bf16 True
+
 # LoRA推論
 python inference_lora.py \
   --adapter_dir outputs_lora \
